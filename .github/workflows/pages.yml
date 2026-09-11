@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Publish map as index.html
+        run: |
+          set -e
+          MAP=$(ls -1 *.html 2>/dev/null | grep -v '^index.html$' | head -n 1 || true)
+          if [ ! -f index.html ] && [ -n "$MAP" ]; then
+            cp "$MAP" index.html
+          fi
+          test -f index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
