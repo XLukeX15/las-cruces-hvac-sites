@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>City of Las Cruces — HVAC sites (satellite)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root {
+    --navy:#0B2A3D; --ink:#1C2833; --muted:#5D6D7E; --bg:#0E1620;
+    --panel:#111B26; --line:#243445; --sat:#1ABC9C; --flag:#C0392B;
+    --chip:#1E2D3A; --text:#E8EEF2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; font-family: "Segoe UI", Calibri, system-ui, sans-serif; color:var(--text); background:var(--bg); }
+  header {
+    background:var(--navy); color:#fff; padding:10px 16px;
+    display:flex; justify-content:space-between; align-items:center; gap:16px;
+    border-bottom:1px solid #163044;
+  }
+  header h1 { margin:0; font-size:16px; font-weight:700; letter-spacing:.02em; }
+  header p { margin:2px 0 0; font-size:11px; opacity:.82; }
+  .wrap { display:flex; height:calc(100% - 54px); }
+  #sidebar {
+    width:380px; max-width:46vw; background:var(--panel);
+    border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:280px;
+  }
+  #map { flex:1; background:#0b0b0b; }
+  .stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; padding:10px; }
+  .stat { background:#162433; border:1px solid var(--line); border-radius:8px; padding:7px 8px; }
+  .stat b { display:block; font-size:15px; color:#7DCEA0; }
+  .stat span { font-size:10px; color:#9AA8B3; text-transform:uppercase; letter-spacing:.04em; }
+  .tools { padding:0 10px 8px; display:flex; flex-direction:column; gap:6px; }
+  .tools input[type=search] {
+    width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px;
+    background:#0E1620; color:var(--text); font-size:13px;
+  }
+  .btns { display:flex; gap:6px; flex-wrap:wrap; }
+  button {
+    background:#1B4F72; color:#fff; border:0; border-radius:6px; padding:6px 8px;
+    font-size:11px; cursor:pointer;
+  }
+  button.ghost { background:#243445; }
+  button.danger { background:#7B241C; }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip {
+    font-size:10px; padding:3px 8px; border-radius:12px; cursor:pointer;
+    background:var(--chip); border:1px solid var(--line); color:#C5D0D8;
+  }
+  .chip.on { background:#0E6655; border-color:#148F77; color:#fff; }
+  #list { overflow:auto; flex:1; }
+  .site {
+    display:grid; grid-template-columns:18px 1fr; gap:8px; align-items:start;
+    padding:8px 12px; border-top:1px solid var(--line); cursor:pointer;
+  }
+  .site:hover { background:#182635; }
+  .site.on { background:#143326; }
+  .site.off { opacity:.45; }
+  .site h3 { margin:0 0 1px; font-size:12.5px; font-weight:650; }
+  .site .addr { font-size:10.5px; color:#9AA8B3; }
+  .gmaps { color:#8ec5ff; text-decoration:none; font-weight:600; }
+  .gmaps:hover { text-decoration:underline; }
+  .leaflet-popup-content .gmaps {
+    display:inline-block; margin-top:2px; padding:5px 9px; border-radius:6px;
+    background:#0B57D0; color:#fff; font-size:12px; font-weight:700;
+  }
+  .leaflet-popup-content .gmaps:hover { background:#0842a0; color:#fff; text-decoration:none; }
+  .site .meta { font-size:11px; margin-top:3px; color:#D5DBDB; }
+  .pill { display:inline-block; font-size:10px; padding:1px 6px; border-radius:10px; background:#2C3E50; margin-right:4px; }
+  .pill.poor { background:#922B21; }
+  .pill.good { background:#196F3D; }
+  .pill.new { background:#1A5276; }
+  .pill.flag { background:#C0392B; }
+  .legend { font-size:11px; color:#9AA8B3; padding:8px 12px 14px; line-height:1.45; border-top:1px solid var(--line); }
+  .leaflet-popup-content { color:#1C2833; font-size:13px; min-width:240px; }
+  .leaflet-popup-content h3 { margin:0 0 4px; font-size:14px; color:#0B2A3D; }
+  .leaflet-control-layers { font-size:12px; }
+  .sel-bar {
+    padding:8px 10px; background:#0B3B2E; border-top:1px solid #148F77; font-size:12px;
+  }
+  input[type=checkbox] { margin-top:3px; accent-color:#1ABC9C; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>City of Las Cruces — HVAC rooftop map</h1>
+    <p>Satellite view for rooftop / unit inspection · 35 buildings · 281 units · $59,100 CoolSaver (Include = Yes)</p>
+  </div>
+  <div style="font-size:11px;opacity:.85;text-align:right">Companion to<br/>City_of_Las_Cruces_HVAC_Unified.xlsx</div>
+</header>
+<div class="wrap">
+  <aside id="sidebar">
+    <div class="stats">
+      <div class="stat"><b id="sUnits">0</b><span>Units shown</span></div>
+      <div class="stat"><b id="sTons">0</b><span>Tons shown</span></div>
+      <div class="stat"><b id="sCool">$0</b><span>CoolSaver shown</span></div>
+    </div>
+    <div class="tools">
+      <input id="q" type="search" placeholder="Filter by site or street…"/>
+      <div class="btns">
+        <button type="button" id="all">Select all</button>
+        <button type="button" class="ghost" id="none">Deselect all</button>
+        <button type="button" class="ghost" id="fit">Fit shown</button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div id="list"></div>
+    <div class="sel-bar" id="selBar">Click a pin or checkbox to include it in the work set. Deselect to hide it on the map.</div>
+    <div class="legend">
+      Default layer is <b style="color:#7DCEA0">Esri satellite</b> — zoom in to rooftops (wheel or +). Switch to Streets in the layer control (top right) if you need road names.
+      Pin size scales with tons. Red pin = Fire Station 14 (unconfirmed — do not dispatch).
+      Lat/lon are planning-grade, not survey marks on a specific RTU.
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const SITES = [{"name": "Community of Hope", "addr": "999 W Amador Ave, Las Cruces, NM 88005", "lat": 32.30248, "lon": -106.78906, "units": 25, "tons": 132.5, "pu": 25, "ss": 0, "wshp": 0, "poor": 0, "good": 11, "newc": 14, "bands": "≤2 ton×1, 2.5–3.5 ton×2, 4–5 ton×13, 6–7.5 ton×7, 8–10 ton×2", "conf": "Official MVCH + city lease", "notes": "City-owned campus leased to Mesilla Valley Community of Hope. Multiple partner buildings on campus.", "flag": false, "cool": 5600, "group": "Community / other"}, {"name": "East Mesa Public Safety Complex", "addr": "550 N Sonoma Ranch Blvd, Las Cruces, NM 88011", "lat": 32.3301, "lon": -106.72599, "units": 10, "tons": 125.5, "pu": 10, "ss": 0, "wshp": 0, "poor": 0, "good": 9, "newc": 1, "bands": "≤2 ton×7, 4–5 ton×1, >20 ton×2", "conf": "Official LCPD + LCFD Station 8 page", "notes": "Shared campus: LCPD East Mesa, Fire Station 8, Police Academy, Community Outreach.", "flag": false, "cool": 3650, "group": "Public safety"}, {"name": "Thomas Branigan Memorial Library", "addr": "200 E Picacho Ave, Las Cruces, NM 88001", "lat": 32.31569, "lon": -106.77837, "units": 15, "tons": 114, "pu": 15, "ss": 0, "wshp": 0, "poor": 15, "good": 0, "newc": 0, "bands": "2.5–3.5 ton×2, 4–5 ton×6, 6–7.5 ton×1, 8–10 ton×4, 12.5–15 ton×1, 16–20 ton×1", "conf": "Official city library page", "notes": "", "flag": false, "cool": 4100, "group": "Downtown"}, {"name": "Las Cruces Regional Aquatic Center", "addr": "1401 E Hadley Ave, Las Cruces, NM 88001", "lat": 32.31683, "lon": -106.76733, "units": 11, "tons": 111.5, "pu": 10, "ss": 1, "wshp": 0, "poor": 0, "good": 11, "newc": 0, "bands": "4–5 ton×2, 6–7.5 ton×2, 8–10 ton×6, >20 ton×1", "conf": "Official city facility page", "notes": "1st floor / 2nd floor / pool unit are the same building.", "flag": false, "cool": 3600, "group": "Hadley campus"}, {"name": "Meerscheidt Recreation Center", "addr": "1600 E Hadley Ave, Las Cruces, NM 88001", "lat": 32.31702, "lon": -106.76204, "units": 11, "tons": 78, "pu": 11, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 11, "bands": "2.5–3.5 ton×1, 4–5 ton×6, 8–10 ton×2, 12.5–15 ton×2", "conf": "OSM building + Google satellite rooftop at 1600 E Hadley / N Hermosa", "notes": "", "flag": false, "cool": 2800, "group": "Hadley campus"}, {"name": "City Hall", "addr": "700 N Main St, Las Cruces, NM 88001", "lat": 32.31478, "lon": -106.77905, "units": 55, "tons": 74.5, "pu": 0, "ss": 21, "wshp": 34, "poor": 0, "good": 55, "newc": 0, "bands": "≤2 ton×55", "conf": "Official city / USGS", "notes": "WSHP inventory. Floors + IT closets are the same building.", "flag": false, "cool": 8250, "group": "Downtown"}, {"name": "Munson Center", "addr": "975 S Mesquite St, Las Cruces, NM 88001", "lat": 32.30205, "lon": -106.77136, "units": 12, "tons": 62, "pu": 10, "ss": 2, "wshp": 0, "poor": 1, "good": 10, "newc": 1, "bands": "≤2 ton×1, 4–5 ton×7, 6–7.5 ton×3, 12.5–15 ton×1", "conf": "Official city senior center / library branch", "notes": "Senior center + Munson Branch Library in same building.", "flag": false, "cool": 2650, "group": "Community / other"}, {"name": "Frank O'Brien Papen Community Center", "addr": "304 W Bell Ave, Las Cruces, NM 88005", "lat": 32.27518, "lon": -106.76937, "units": 11, "tons": 59.5, "pu": 3, "ss": 8, "wshp": 0, "poor": 0, "good": 0, "newc": 11, "bands": "2.5–3.5 ton×1, 4–5 ton×7, 6–7.5 ton×3", "conf": "Official city facility page", "notes": "City page also lists 304 W Bell Ave.", "flag": false, "cool": 2350, "group": "Community / other"}, {"name": "Hadley Complex (Parks / Facilities)", "addr": "1501 E Hadley Ave, Las Cruces, NM 88001", "lat": 32.31794, "lon": -106.76554, "units": 14, "tons": 58, "pu": 10, "ss": 4, "wshp": 0, "poor": 10, "good": 0, "newc": 4, "bands": "≤2 ton×3, 2.5–3.5 ton×4, 4–5 ton×5, 8–10 ton×2", "conf": "City facilities / Parks admin listings + FCC radio registrant", "notes": "Parks & Recreation / Facilities Management / radio shop campus. Distinct from Meerscheidt (1600) and Aquatic Center (1401) on the same Hadley corridor.", "flag": false, "cool": 2650, "group": "Hadley campus"}, {"name": "Rio Grande Theatre", "addr": "211 N Main St, Las Cruces, NM 88001", "lat": 32.31073, "lon": -106.77909, "units": 7, "tons": 57.5, "pu": 7, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 7, "bands": "2.5–3.5 ton×1, 4–5 ton×1, 6–7.5 ton×2, 8–10 ton×1, 12.5–15 ton×2", "conf": "Official / NRHP", "notes": "", "flag": false, "cool": 1950, "group": "Downtown"}, {"name": "Museum of Nature & Science", "addr": "411 N Main St, Las Cruces, NM 88001", "lat": 32.31247, "lon": -106.77972, "units": 9, "tons": 52.5, "pu": 9, "ss": 0, "wshp": 0, "poor": 0, "good": 9, "newc": 0, "bands": "≤2 ton×2, 6–7.5 ton×7", "conf": "Official city museum page", "notes": "", "flag": false, "cool": 2050, "group": "Downtown"}, {"name": "Museum of Art", "addr": "491 N Main St, Las Cruces, NM 88001", "lat": 32.3128, "lon": -106.77978, "units": 7, "tons": 44, "pu": 7, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 7, "bands": "2.5–3.5 ton×1, 4–5 ton×2, 6–7.5 ton×3, 8–10 ton×1", "conf": "Official city museum page", "notes": "", "flag": false, "cool": 1700, "group": "Downtown"}, {"name": "Fire Station 14 (UNCONFIRMED)", "addr": "1050 Crawford Blvd, Las Cruces, NM 88007", "lat": 32.28221, "lon": -106.92179, "units": 6, "tons": 39, "pu": 6, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 6, "bands": "4–5 ton×1, 6–7.5 ton×4, 8–10 ton×1", "conf": "Google Place: Las Cruces Fire Station 14", "notes": "Google Maps and LCFD list this ARFF house as Station 14 at 1050 Crawford Blvd (airport). Source inventory also listed Fire Station 7 at the same campus — pins sit on the same rooftop. Confirm in the field whether they are one building or two.", "flag": false, "cool": 0, "group": "Flagged"}, {"name": "Las Cruces International Airport (terminal)", "addr": "8990 Zia Blvd, Las Cruces, NM 88007", "lat": 32.28306, "lon": -106.92044, "units": 5, "tons": 35, "pu": 1, "ss": 4, "wshp": 0, "poor": 0, "good": 4, "newc": 1, "bands": "4–5 ton×1, 6–7.5 ton×4", "conf": "Google Place rooftop (terminal)", "notes": "Passenger terminal on Zia Blvd, south of the runways. FS14/FS7 ARFF is the building immediately west.", "flag": false, "cool": 1200, "group": "Airport"}, {"name": "Branigan Cultural Center", "addr": "501 N Main St, Las Cruces, NM 88001", "lat": 32.3131, "lon": -106.78005, "units": 7, "tons": 31, "pu": 7, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 7, "bands": "≤2 ton×2, 2.5–3.5 ton×2, 4–5 ton×1, 6–7.5 ton×1, 8–10 ton×1", "conf": "Official city museum page", "notes": "", "flag": false, "cool": 1500, "group": "Downtown"}, {"name": "Eastside Community Center", "addr": "310 N Tornillo St, Las Cruces, NM 88001", "lat": 32.31248, "lon": -106.77374, "units": 7, "tons": 29, "pu": 7, "ss": 0, "wshp": 0, "poor": 0, "good": 1, "newc": 6, "bands": "2.5–3.5 ton×1, 4–5 ton×6", "conf": "Official city senior programs page", "notes": "", "flag": false, "cool": 1400, "group": "Community / other"}, {"name": "Fire Station 6", "addr": "2750 Northrise Dr, Las Cruces, NM 88011", "lat": 32.35531, "lon": -106.75534, "units": 3, "tons": 28, "pu": 2, "ss": 1, "wshp": 0, "poor": 0, "good": 0, "newc": 3, "bands": "2.5–3.5 ton×1, 12.5–15 ton×2", "conf": "Official LCFD", "notes": "", "flag": false, "cool": 900, "group": "Public safety"}, {"name": "La Casa Inc", "addr": "800 S Walnut St, Las Cruces, NM 88001", "lat": 32.3098, "lon": -106.75424, "units": 10, "tons": 28, "pu": 10, "ss": 0, "wshp": 0, "poor": 9, "good": 1, "newc": 0, "bands": "≤2 ton×7, 4–5 ton×3", "conf": "Google Place + published La Casa address", "notes": "Admin / services building at 800 S Walnut (Young Park / Lohman). Shelter programs may use additional unpublished sites.", "flag": false, "cool": 1650, "group": "Community / other"}, {"name": "Mesilla Valley Intermodal Transit Terminal", "addr": "300 W Lohman Ave, Las Cruces, NM 88001", "lat": 32.30542, "lon": -106.78106, "units": 8, "tons": 28, "pu": 0, "ss": 8, "wshp": 0, "poor": 0, "good": 8, "newc": 0, "bands": "≤2 ton×2, 4–5 ton×6", "conf": "Official / NMDOT / RoadRUNNER hub", "notes": "", "flag": false, "cool": 1500, "group": "Downtown"}, {"name": "A. Fielder Memorial Safe Haven", "addr": "908 N Tornillo St, Las Cruces, NM 88001", "lat": 32.31712, "lon": -106.77492, "units": 5, "tons": 26, "pu": 5, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 5, "bands": "4–5 ton×4, 6–7.5 ton×1", "conf": "Official city Weed & Seed / Parks page", "notes": "Also listed as 906 or 901 N Tornillo — same Youth Services campus.", "flag": false, "cool": 1050, "group": "Community / other"}, {"name": "Henry Benavidez Community Center", "addr": "1045 McClure Rd, Las Cruces, NM 88005", "lat": 32.32115, "lon": -106.79521, "units": 3, "tons": 22.5, "pu": 3, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 3, "bands": "4–5 ton×1, 6–7.5 ton×1, 8–10 ton×1", "conf": "Official city senior programs page", "notes": "", "flag": false, "cool": 800, "group": "Community / other"}, {"name": "Fire Station 7 (airport ARFF)", "addr": "1050 Crawford Blvd, Las Cruces, NM 88007", "lat": 32.28221, "lon": -106.92179, "units": 5, "tons": 22, "pu": 5, "ss": 0, "wshp": 0, "poor": 0, "good": 5, "newc": 0, "bands": "4–5 ton×5", "conf": "OSM + Google (same building Google labels Station 14)", "notes": "Same airport ARFF rooftop as Fire Station 14. Source inventory used the older Station 7 name.", "flag": false, "cool": 1000, "group": "Airport"}, {"name": "Las Cruces Convention Center", "addr": "680 E University Ave, Las Cruces, NM 88001", "lat": 32.2825, "lon": -106.76243, "units": 6, "tons": 22, "pu": 0, "ss": 6, "wshp": 0, "poor": 0, "good": 6, "newc": 0, "bands": "≤2 ton×1, 2.5–3.5 ton×2, 4–5 ton×3", "conf": "Official convention center FAQ", "notes": "", "flag": false, "cool": 1150, "group": "Community / other"}, {"name": "Fire Station 3", "addr": "390 N Valley Dr, Las Cruces, NM 88005", "lat": 32.30781, "lon": -106.79431, "units": 5, "tons": 19, "pu": 3, "ss": 2, "wshp": 0, "poor": 0, "good": 5, "newc": 0, "bands": "2.5–3.5 ton×2, 4–5 ton×3", "conf": "Official LCFD", "notes": "", "flag": false, "cool": 1000, "group": "Public safety"}, {"name": "Railroad Museum", "addr": "351 N Mesilla St, Las Cruces, NM 88005", "lat": 32.30857, "lon": -106.78695, "units": 3, "tons": 15, "pu": 3, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 3, "bands": "4–5 ton×3", "conf": "Official city venue page", "notes": "", "flag": false, "cool": 600, "group": "Downtown"}, {"name": "Fire Station 4", "addr": "2802 E Missouri Ave, Las Cruces, NM 88011", "lat": 32.29936, "lon": -106.73764, "units": 2, "tons": 12.5, "pu": 2, "ss": 0, "wshp": 0, "poor": 0, "good": 1, "newc": 1, "bands": "4–5 ton×1, 8–10 ton×1", "conf": "Official LCFD", "notes": "", "flag": false, "cool": 450, "group": "Public safety"}, {"name": "Fire Station 5", "addr": "5998 Bataan Memorial East, Las Cruces, NM 88011", "lat": 32.38925, "lon": -106.70096, "units": 3, "tons": 12, "pu": 3, "ss": 0, "wshp": 0, "poor": 0, "good": 3, "newc": 0, "bands": "4–5 ton×3", "conf": "Official LCFD", "notes": "", "flag": false, "cool": 600, "group": "Public safety"}, {"name": "Sage Café", "addr": "6121 Reynolds Dr, Las Cruces, NM 88011", "lat": 32.38977, "lon": -106.69916, "units": 4, "tons": 12, "pu": 0, "ss": 4, "wshp": 0, "poor": 0, "good": 4, "newc": 0, "bands": "≤2 ton×1, 2.5–3.5 ton×2, 4–5 ton×1", "conf": "Official city senior programs + library branch", "notes": "Senior center + Sage Café Branch Library.", "flag": false, "cool": 750, "group": "Community / other"}, {"name": "JCP Learning Center", "addr": "890 N Tornillo St, Las Cruces, NM 88001", "lat": 32.31679, "lon": -106.77485, "units": 1, "tons": 7.5, "pu": 1, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 1, "bands": "6–7.5 ton×1", "conf": "Chamber / Youth Development listing", "notes": "Juvenile Citation Program / Youth Development & Diversion. Same Tornillo corridor as Fielder Safe Haven and Eastside Center.", "flag": false, "cool": 250, "group": "Community / other"}, {"name": "Judicial Complex (Municipal Court)", "addr": "135 E Griggs Ave, Las Cruces, NM 88001", "lat": 32.30994, "lon": -106.77779, "units": 2, "tons": 7, "pu": 1, "ss": 1, "wshp": 0, "poor": 0, "good": 2, "newc": 0, "bands": "≤2 ton×1, 4–5 ton×1", "conf": "OSM name match + city Municipal Court page", "notes": "OSM labels this building 'City of Las Cruces Judicial Complex'. City Municipal Court is 135 E Griggs. Third Judicial District Court (state) is 201 W Picacho Ave — confirm on site which building the ESCO inventoried.", "flag": false, "cool": 350, "group": "Downtown"}, {"name": "West Mesa communications site", "addr": "West Mesa tower, ~2 mi west of Las Cruces (no street address)", "lat": 32.27897, "lon": -106.86389, "units": 2, "tons": 6.5, "pu": 0, "ss": 2, "wshp": 0, "poor": 1, "good": 0, "newc": 1, "bands": "≤2 ton×1, 4–5 ton×1", "conf": "FCC WPXQ890 / WQUW732", "notes": "Hilltop comm site. One source row is blank on the POST side. Restricted access.", "flag": false, "cool": 350, "group": "Comm sites"}, {"name": "Fire Station 2", "addr": "1199 E Foster Rd, Las Cruces, NM 88001", "lat": 32.298, "lon": -106.7628, "units": 2, "tons": 6, "pu": 0, "ss": 2, "wshp": 0, "poor": 0, "good": 2, "newc": 0, "bands": "2.5–3.5 ton×2", "conf": "Official city facility page + RadioReference", "notes": "Homefacts '119 E Foster' is wrong. Correct is 1199 E Foster @ Chaparro.", "flag": false, "cool": 400, "group": "Public safety"}, {"name": "A-Mountain communications site", "addr": "Tortugas / 'A' Mountain communications site (no street address)", "lat": 32.29258, "lon": -106.69806, "units": 2, "tons": 5, "pu": 0, "ss": 2, "wshp": 0, "poor": 2, "good": 0, "newc": 0, "bands": "2.5–3.5 ton×2", "conf": "FCC WPB55 / city radio registrations", "notes": "Hilltop comm site. 4x4 / restricted access. One of two units flagged Negative kWh savings in the ESCO file (irrelevant to cleaning).", "flag": false, "cool": 300, "group": "Comm sites"}, {"name": "Police Station (LCPD main)", "addr": "217 E Picacho Ave, Las Cruces, NM 88001", "lat": 32.31693, "lon": -106.77817, "units": 2, "tons": 4.5, "pu": 2, "ss": 0, "wshp": 0, "poor": 0, "good": 0, "newc": 2, "bands": "≤2 ton×1, 2.5–3.5 ton×1", "conf": "Official LCPD", "notes": "", "flag": false, "cool": 350, "group": "Public safety"}, {"name": "Fire Station 1", "addr": "201 E Picacho Ave, Las Cruces, NM 88001", "lat": 32.3168, "lon": -106.77919, "units": 1, "tons": 3, "pu": 1, "ss": 0, "wshp": 0, "poor": 1, "good": 0, "newc": 0, "bands": "2.5–3.5 ton×1", "conf": "Official LCFD facility page", "notes": "", "flag": false, "cool": 200, "group": "Public safety"}];
+
+const GROUPS = ['Downtown','Hadley campus','Public safety','Airport','Community / other','Comm sites','Flagged'];
+
+const map = L.map('map', { scrollWheelZoom: true, zoomControl: true }).setView([32.32, -106.78], 12);
+
+const satellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: 'Tiles © Esri' }
+);
+const labels = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: 'Labels © Esri' }
+);
+const streets = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, attribution: '&copy; OpenStreetMap' }
+);
+satellite.addTo(map);
+labels.addTo(map);
+
+L.control.layers(
+  { 'Satellite (rooftops)': satellite, 'Streets': streets },
+  { 'Place names': labels },
+  { collapsed: false, position: 'topright' }
+).addTo(map);
+
+function radiusFor(tons) { return Math.max(7, Math.min(26, 5 + Math.sqrt(Number(tons)||0) * 1.55)); }
+function colorFor(s) {
+  if (s.flag) return '#C0392B';
+  if (s.tons >= 100) return '#1A5276';
+  if (s.tons >= 50) return '#0E6655';
+  if (s.tons >= 20) return '#1ABC9C';
+  return '#58D68D';
+}
+function money(n) { return '$' + Number(n||0).toLocaleString('en-US'); }
+
+const markers = {};
+const selected = {};
+SITES.forEach((s, i) => { selected[i] = true; });
+
+const groupOn = {};
+GROUPS.forEach(g => groupOn[g] = true);
+
+function hasStreetAddress(s) {
+  const a = (s.addr || '').trim();
+  if (!a) return false;
+  const low = a.toLowerCase();
+  if (low.indexOf('unconfirmed') >= 0) return false;
+  if (low.indexOf('no street') >= 0) return false;
+  if (low.indexOf('communications site') >= 0) return false;
+  // Real street numbers: "200 E Picacho Ave, Las Cruces, NM 88001"
+  return /\d/.test(a);
+}
+function mapsUrl(s) {
+  if (hasStreetAddress(s)) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.addr);
+  }
+  if (s.lat != null && s.lon != null) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.lat + ',' + s.lon);
+  }
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.name);
+}
+function mapsLink(s, label) {
+  return '<a class="gmaps" href="' + mapsUrl(s) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' + (label || 'Open in Google Maps') + '</a>';
+}
+
+function popupHtml(s) {
+  return `<h3>${s.name}</h3>
+    <div>${s.addr}</div>
+    <div style="margin-top:8px">${mapsLink(s, "Open in Google Maps")}</div>
+    <div style="margin-top:6px"><b>${s.units}</b> units · <b>${s.tons}</b> tons · <b>${money(s.cool)}</b> CoolSaver</div>
+    <div>Poor ${s.poor||0} · Good ${s.good||0} · New ${s.newc||0}</div>
+    <div>PU ${s.pu||0} · SS ${s.ss||0} · WSHP ${s.wshp||0}</div>
+    ${s.bands ? `<div style="margin-top:4px;font-size:11px;color:#566573">${s.bands}</div>` : ''}
+    ${s.notes ? `<div style="margin-top:4px;font-size:11px">${s.notes}</div>` : ''}
+    ${s.flag ? '<div style="margin-top:6px;color:#922B21"><b>Flagged — confirm with the city before dispatch</b></div>' : ''}
+    <div style="margin-top:8px;font-size:11px;color:#566573">Uncheck in the sidebar to hide this pin.</div>`;
+}
+
+function drawMarkers() {
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  SITES.forEach((s, i) => {
+    if (!selected[i] || s.lat == null || s.lon == null) return;
+    const m = L.circleMarker([s.lat, s.lon], {
+      radius: radiusFor(s.tons), color:'#fff', weight:2,
+      fillColor: colorFor(s), fillOpacity: 0.9
+    }).addTo(map);
+    m.bindPopup(popupHtml(s));
+    m.on('click', () => highlight(i));
+    markers[i] = m;
+  });
+}
+
+function highlight(i) {
+  const el = document.querySelector(`.site[data-i="${i}"]`);
+  if (el) {
+    document.querySelectorAll('.site').forEach(n => n.classList.remove('on'));
+    el.classList.add('on');
+    el.scrollIntoView({ block:'nearest' });
+  }
+  if (markers[i]) {
+    markers[i].openPopup();
+    map.setView([SITES[i].lat, SITES[i].lon], Math.max(map.getZoom(), 17), { animate:true });
+  }
+}
+
+function shownIndices() {
+  const q = (document.getElementById('q').value || '').toLowerCase();
+  return SITES.map((s,i) => i).filter(i => {
+    const s = SITES[i];
+    if (!groupOn[s.group]) return false;
+    const hay = (s.name + ' ' + s.addr + ' ' + (s.notes||'') + ' ' + (s.bands||'')).toLowerCase();
+    if (q && !hay.includes(q)) return false;
+    return true;
+  });
+}
+
+function totals() {
+  let units=0, tons=0, cool=0, n=0;
+  shownIndices().forEach(i => {
+    if (!selected[i]) return;
+    n++; units += SITES[i].units||0; tons += SITES[i].tons||0; cool += SITES[i].cool||0;
+  });
+  document.getElementById('sUnits').textContent = units.toLocaleString();
+  document.getElementById('sTons').textContent = Number(tons).toLocaleString();
+  document.getElementById('sCool').textContent = money(cool);
+  document.getElementById('selBar').textContent =
+    n + ' buildings selected · ' + units + ' units · ' + Number(tons).toLocaleString() + ' tons · ' + money(cool) + ' CoolSaver reimbursement';
+}
+
+function renderList() {
+  const list = document.getElementById('list');
+  const idxs = shownIndices();
+  list.innerHTML = '';
+  idxs.forEach(i => {
+    const s = SITES[i];
+    const el = document.createElement('div');
+    el.className = 'site' + (selected[i] ? '' : ' off');
+    el.dataset.i = i;
+    el.innerHTML = `<input type="checkbox" ${selected[i]?'checked':''} data-i="${i}"/>
+      <div>
+        <h3>${s.name}</h3>
+        <div class="addr">${s.addr}<br/>${mapsLink(s, "Google Maps")}</div>
+        <div class="meta">${s.units} units · ${s.tons} t · ${money(s.cool)}
+          ${s.poor ? `<span class="pill poor">${s.poor} poor</span>` : ''}
+          ${s.good ? `<span class="pill good">${s.good} good</span>` : ''}
+          ${s.newc ? `<span class="pill new">${s.newc} new</span>` : ''}
+          ${s.flag ? `<span class="pill flag">flag</span>` : ''}
+        </div>
+      </div>`;
+    el.querySelector('input').addEventListener('click', ev => {
+      ev.stopPropagation();
+      selected[i] = ev.target.checked;
+      drawMarkers(); totals(); renderList();
+    });
+    el.addEventListener('click', ev => {
+      if (ev.target.tagName === 'INPUT' || ev.target.closest('a')) return;
+      if (!selected[i]) {
+        selected[i] = true;
+        drawMarkers(); totals(); renderList();
+      }
+      highlight(i);
+    });
+    list.appendChild(el);
+  });
+}
+
+function renderChips() {
+  const box = document.getElementById('chips');
+  box.innerHTML = '';
+  GROUPS.forEach(g => {
+    const n = SITES.filter(s => s.group === g).length;
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (groupOn[g] ? ' on' : '');
+    chip.textContent = g + ' · ' + n;
+    chip.addEventListener('click', () => {
+      groupOn[g] = !groupOn[g];
+      renderChips(); drawMarkers(); totals(); renderList();
+    });
+    box.appendChild(chip);
+  });
+}
+
+document.getElementById('all').onclick = () => {
+  shownIndices().forEach(i => selected[i] = true);
+  drawMarkers(); totals(); renderList();
+};
+document.getElementById('none').onclick = () => {
+  shownIndices().forEach(i => selected[i] = false);
+  drawMarkers(); totals(); renderList();
+};
+document.getElementById('fit').onclick = () => {
+  const pts = [];
+  shownIndices().forEach(i => {
+    if (selected[i] && SITES[i].lat != null) pts.push([SITES[i].lat, SITES[i].lon]);
+  });
+  if (pts.length) map.fitBounds(pts, { padding:[30,30], maxZoom:17 });
+};
+document.getElementById('q').addEventListener('input', () => { renderList(); drawMarkers(); totals(); });
+
+renderChips();
+drawMarkers();
+renderList();
+totals();
+const allPts = SITES.filter(s => s.lat != null).map(s => [s.lat, s.lon]);
+if (allPts.length) map.fitBounds(allPts, { padding:[28,28] });
+</script>
+</body>
+</html>
